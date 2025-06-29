@@ -2,8 +2,31 @@ import gradio as gr
 import random
 import json
 import time
+import threading
+import functools
 from typing import List, Dict, Tuple
 import pandas as pd
+
+# Decorator to run a function periodically in a background daemon thread
+def periodic_call(interval_sec=600):
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            if not hasattr(wrapper, "_thread_started"):
+                def loop():
+                    while True:
+                        print(f"[Periodic] Running {func.__name__}...")
+                        try:
+                            func(*args, **kwargs)
+                        except Exception as e:
+                            print(f"[Periodic] Error in {func.__name__}: {e}")
+                        time.sleep(interval_sec)
+                t = threading.Thread(target=loop, daemon=True)
+                t.start()
+                wrapper._thread_started = True
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
 
 class CareerVerseAI:
     def __init__(self):
@@ -263,8 +286,26 @@ class CareerVerseAI:
         
         return random.choice(general_responses)
 
+    @periodic_call(600)  # Runs every 10 minutes in background
+    def refresh_career_recommendations(self):
+        # Dummy default input for periodic run
+        skills = ["Python", "SQL", "Machine Learning"]
+        interests = ["data", "analytics"]
+        recs = self.analyze_skills_and_interests(skills, interests)
+        print(f"[Periodic Refresh] Career Recommendations refreshed: {[r['title'] for r in recs]}")
+
+    @periodic_call(600)  # Runs every 10 minutes in background
+    def refresh_resume_analysis(self):
+        dummy_resume = "Experienced Python developer with skills in Machine Learning and SQL."
+        analysis = self.analyze_resume(dummy_resume)
+        print(f"[Periodic Refresh] Resume analysis refreshed: Overall score {analysis['overall']}")
+
 # Initialize the AI system
 career_ai = CareerVerseAI()
+
+# Start periodic background calls
+career_ai.refresh_career_recommendations()
+career_ai.refresh_resume_analysis()
 
 # Gradio Interface Functions
 def get_career_recommendations(skills_input: str, interests_input: str) -> str:
@@ -358,242 +399,62 @@ def get_skill_recommendations(current_role: str, target_role: str) -> str:
         "data scientist": ["Python", "Machine Learning", "Statistics", "SQL", "Pandas", "TensorFlow"],
         "web developer": ["JavaScript", "React", "Node.js", "HTML/CSS", "Git", "MongoDB"],
         "devops engineer": ["AWS", "Docker", "Kubernetes", "CI/CD", "Linux", "Terraform"],
-        "ui/ux designer": ["Figma", "Adobe Creative Suite", "User Research", "Prototyping", "Wireframing"],
-        "cybersecurity": ["Network Security", "Ethical Hacking", "Risk Assessment", "Compliance", "Penetration Testing"],
-        "mobile developer": ["Swift", "Kotlin", "React Native", "Flutter", "Mobile UI", "App Store Optimization"]
+        "ui/ux designer": ["Figma", "Adobe Creative Suite", "User Research", "Prototyping"],
+        "cybersecurity analyst": ["Network Security", "Ethical Hacking", "Risk Assessment", "Compliance"]
     }
     
-    target_skills = []
-    for role, skills in skill_maps.items():
-        if role in target_role.lower():
-            target_skills = skills
-            break
+    current_skills = skill_maps.get(current_role.lower(), [])
+    target_skills = skill_maps.get(target_role.lower(), [])
     
-    if not target_skills:
-        target_skills = ["Communication", "Problem Solving", "Project Management", "Leadership", "Technical Writing"]
+    missing_skills = [skill for skill in target_skills if skill not in current_skills]
     
-    result += f"🛠️ **Key Skills Needed for {target_role}:**\n"
-    for skill in target_skills:
-        result += f"• {skill}\n"
-    
-    result += f"\n📚 **Learning Resources:**\n"
-    result += "• **Online Courses:** Coursera, Udemy, edX, Pluralsight\n"
-    result += "• **Practice Platforms:** GitHub, Kaggle, LeetCode, HackerRank\n"
-    result += "• **Documentation:** Official docs, MDN, Stack Overflow\n"
-    result += "• **Communities:** Reddit, Discord, LinkedIn groups\n"
-    
-    result += f"\n⏱️ **Estimated Timeline:** 3-6 months of consistent learning\n"
-    result += f"🎯 **Next Steps:**\n"
-    result += "1. Choose 2-3 priority skills to focus on first\n"
-    result += "2. Set up a daily learning schedule (1-2 hours)\n"
-    result += "3. Build projects to practice new skills\n"
-    result += "4. Join communities and network with professionals\n"
-    result += "5. Update your resume and LinkedIn profile\n"
+    if not missing_skills:
+        result += "✅ You already possess most of the skills required for your target role. Great job!\n"
+    else:
+        result += "📚 **Skills to Learn:**\n"
+        for skill in missing_skills:
+            result += f"• {skill}\n"
     
     return result
 
-# Create Gradio Interface
-def create_interface():
-    with gr.Blocks(
-        theme=gr.themes.Soft(
-            primary_hue="purple",
-            secondary_hue="pink",
-            neutral_hue="slate"
-        ),
-        title="CareerVerse - AI Career Advisor",
-        css="""
-        .gradio-container {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            font-family: 'Inter', sans-serif;
-        }
-        .gr-button-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border: none;
-            border-radius: 12px;
-            font-weight: 600;
-        }
-        .gr-panel {
-            border-radius: 16px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-        }
-        """
-    ) as app:
-        
-        gr.Markdown("""
-        # 🚀 CareerVerse - AI-Powered Career Advisor
-        
-        ### Discover your dream career with personalized AI recommendations!
-        
-        Welcome to CareerVerse, your intelligent career companion. Get personalized career recommendations, 
-        resume analysis, skill gap insights, and chat with our AI career mentor.
-        """)
-        
-        with gr.Tabs():
-            # Career Recommendations Tab
-            with gr.Tab("🎯 Career Recommendations"):
-                gr.Markdown("### Get Personalized Career Matches")
-                gr.Markdown("Enter your skills and interests to discover careers that match your profile!")
-                
-                with gr.Row():
-                    with gr.Column():
-                        skills_input = gr.Textbox(
-                            label="Your Skills (comma-separated)",
-                            placeholder="e.g., Python, JavaScript, SQL, Project Management, Communication",
-                            lines=3
-                        )
-                        interests_input = gr.Textbox(
-                            label="Your Interests (comma-separated)", 
-                            placeholder="e.g., Web Development, Data Analysis, Machine Learning, Design",
-                            lines=3
-                        )
-                        recommend_btn = gr.Button("Get Career Recommendations 🚀", variant="primary")
-                    
-                    with gr.Column():
-                        recommendations_output = gr.Markdown(label="Your Career Recommendations")
-                
-                recommend_btn.click(
-                    get_career_recommendations,
-                    inputs=[skills_input, interests_input],
-                    outputs=recommendations_output
-                )
-            
-            # Resume Analysis Tab  
-            with gr.Tab("📄 Resume Analyzer"):
-                gr.Markdown("### AI-Powered Resume Analysis")
-                gr.Markdown("Paste your resume text below to get instant feedback and improvement suggestions!")
-                
-                with gr.Row():
-                    with gr.Column():
-                        resume_input = gr.Textbox(
-                            label="Paste Your Resume Text Here",
-                            placeholder="Copy and paste your resume content here...",
-                            lines=10
-                        )
-                        analyze_btn = gr.Button("Analyze Resume 📊", variant="primary")
-                    
-                    with gr.Column():
-                        resume_output = gr.Markdown(label="Resume Analysis Results")
-                
-                analyze_btn.click(
-                    analyze_resume_text,
-                    inputs=resume_input,
-                    outputs=resume_output
-                )
-            
-            # AI Career Mentor Chat Tab
-            with gr.Tab("🤖 AI Career Mentor"):
-                gr.Markdown("### Chat with Your AI Career Coach")
-                gr.Markdown("Ask questions about career advice, interview preparation, skill development, and more!")
-                
-                chatbot = gr.Chatbot(
-                    label="Career Mentor Chat",
-                    height=400,
-                    placeholder="Hi! I'm your AI Career Mentor. Ask me anything about your career journey!"
-                )
-                
-                with gr.Row():
-                    chat_input = gr.Textbox(
-                        label="Your Question",
-                        placeholder="Ask about interviews, skills, career changes, salary negotiation...",
-                        scale=4
-                    )
-                    chat_btn = gr.Button("Send 💬", variant="primary", scale=1)
-                
-                # Sample questions for quick start
-                gr.Markdown("**Quick Start Questions:**")
-                with gr.Row():
-                    gr.Button("How to prepare for interviews?").click(
-                        lambda: ("How to prepare for interviews?", []), 
-                        outputs=[chat_input, chatbot]
-                    )
-                    gr.Button("What skills should I learn?").click(
-                        lambda: ("What skills should I learn next?", []),
-                        outputs=[chat_input, chatbot]
-                    )
-                    gr.Button("Career change advice?").click(
-                        lambda: ("I want to change careers, any advice?", []),
-                        outputs=[chat_input, chatbot]
-                    )
-                
-                chat_btn.click(
-                    chat_with_ai,
-                    inputs=[chat_input, chatbot],
-                    outputs=[chat_input, chatbot]
-                )
-                
-                chat_input.submit(
-                    chat_with_ai,
-                    inputs=[chat_input, chatbot], 
-                    outputs=[chat_input, chatbot]
-                )
-            
-            # Skill Gap Analysis Tab
-            with gr.Tab("🛠️ Skill Gap Analysis"):
-                gr.Markdown("### Identify Skills You Need to Learn")
-                gr.Markdown("Compare your current role with your target role to identify skill gaps!")
-                
-                with gr.Row():
-                    with gr.Column():
-                        current_role = gr.Textbox(
-                            label="Current Role",
-                            placeholder="e.g., Marketing Coordinator, Student, Sales Representative"
-                        )
-                        target_role = gr.Textbox(
-                            label="Target Role", 
-                            placeholder="e.g., Data Scientist, Web Developer, Product Manager"
-                        )
-                        skill_btn = gr.Button("Analyze Skill Gap 🎯", variant="primary")
-                    
-                    with gr.Column():
-                        skill_output = gr.Markdown(label="Skill Gap Analysis")
-                
-                skill_btn.click(
-                    get_skill_recommendations,
-                    inputs=[current_role, target_role],
-                    outputs=skill_output
-                )
-            
-            # Personality Quiz Tab
-            with gr.Tab("🧠 Personality Quiz"):
-                gr.Markdown("### Career Personality Assessment")
-                gr.Markdown("Discover what type of careers match your personality and work style!")
-                
-                quiz_btn = gr.Button("Take Personality Quiz 🧠", variant="primary")
-                quiz_output = gr.Markdown(label="Personality Quiz")
-                
-                quiz_btn.click(
-                    take_personality_quiz,
-                    outputs=quiz_output
-                )
-        
-        # Footer
-        gr.Markdown("""
-        ---
-        ### 🌟 About CareerVerse
-        
-        CareerVerse is your AI-powered career companion, designed to help you:
-        - **Discover** careers that match your skills and interests
-        - **Analyze** your resume for ATS optimization  
-        - **Learn** what skills you need for your dream job
-        - **Chat** with an AI mentor for personalized advice
-        - **Assess** your personality for career matching
-        
-        **Built with ❤️ using Python and Gradio**
-        
-        *Start your career transformation journey today!*
-        """)
-    
-    return app
+# Setup Gradio UI
+with gr.Blocks() as demo:
+    gr.Markdown("# CareerVerse AI - Your Career Guide 🤖💼")
 
-# Launch the application
-if __name__ == "__main__":
-    app = create_interface()
-    app.launch(
-        server_name="0.0.0.0",
-        server_port=7860,
-        share=True,
-        show_error=True,
-        debug=True
-    )
+    with gr.Tab("Career Recommendations"):
+        gr.Markdown("Enter your skills and interests separated by commas.")
+        skills_input = gr.Textbox(label="Your Skills (comma separated)", placeholder="e.g. Python, SQL, Machine Learning")
+        interests_input = gr.Textbox(label="Your Interests (comma separated)", placeholder="e.g. data, analytics")
+        rec_btn = gr.Button("Get Recommendations")
+        rec_output = gr.Markdown()
+
+        rec_btn.click(fn=get_career_recommendations, inputs=[skills_input, interests_input], outputs=rec_output)
+
+    with gr.Tab("Resume Analyzer"):
+        gr.Markdown("Paste your resume text below for analysis.")
+        resume_input = gr.Textbox(lines=15, label="Resume Text")
+        analyze_btn = gr.Button("Analyze Resume")
+        analysis_output = gr.Markdown()
+
+        analyze_btn.click(fn=analyze_resume_text, inputs=resume_input, outputs=analysis_output)
+
+    with gr.Tab("AI Career Mentor Chat"):
+        chatbot = gr.Chatbot()
+        msg = gr.Textbox(label="Your Question")
+        clear_btn = gr.Button("Clear Chat")
+
+        msg.submit(chat_with_ai, inputs=[msg, chatbot], outputs=[msg, chatbot])
+        clear_btn.click(lambda: None, None, chatbot, queue=False)
+
+    with gr.Tab("Personality Quiz"):
+        personality_md = gr.Markdown(take_personality_quiz())
+
+    with gr.Tab("Skill Recommendations"):
+        current_role_input = gr.Textbox(label="Current Role", placeholder="e.g. Data Scientist")
+        target_role_input = gr.Textbox(label="Target Role", placeholder="e.g. DevOps Engineer")
+        skill_rec_btn = gr.Button("Get Skill Recommendations")
+        skill_rec_output = gr.Markdown()
+
+        skill_rec_btn.click(get_skill_recommendations, inputs=[current_role_input, target_role_input], outputs=skill_rec_output)
+
+demo.launch()

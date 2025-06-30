@@ -1,36 +1,62 @@
+# careerverse_app.py
 import gradio as gr
 import google.generativeai as genai
 import os
+import threading
+import time
+import functools
 
-from dotenv import load_dotenv
-load_dotenv()
+# Only needed for local development with .env
+if os.environ.get("RENDER") != "true":
+    from dotenv import load_dotenv
+    load_dotenv()
 
-# Get the Gemini API key from environment
+# Get Gemini API key
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
-    raise ValueError("GEMINI_API_KEY not found in environment. Please set it in your .env file.")
+    raise ValueError("GEMINI_API_KEY not found in environment. Please set it in Render or .env")
 
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel("gemini-1.5-flash")
 
+# ------------------ Periodic Call Decorator ------------------
+def periodic_call(interval_sec=720):
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper():
+            if not hasattr(wrapper, "_thread_started"):
+                def loop():
+                    while True:
+                        try:
+                            print(f"\u23f0 Running scheduled function: {func.__name__}")
+                            func()
+                        except Exception as e:
+                            print(f"\u274c Error in scheduled function {func.__name__}: {e}")
+                        time.sleep(interval_sec)
+                threading.Thread(target=loop, daemon=True).start()
+                wrapper._thread_started = True
+            func()  # Run once immediately
+        return wrapper
+    return decorator
+
+# ------------------ Core Functions ------------------
 def extract_text_from_file(file_obj):
     import os
     ext = os.path.splitext(file_obj.name)[-1].lower()
     if ext == ".pdf":
-        import fitz  # PyMuPDF
+        import fitz
         with fitz.open(file_obj.name) as doc:
             return "\n".join(page.get_text() for page in doc)
-    elif ext in [".docx"]:
+    elif ext == ".docx":
         import docx
         doc = docx.Document(file_obj.name)
         return "\n".join([para.text for para in doc.paragraphs])
-    elif ext in [".txt"]:
+    elif ext == ".txt":
         with open(file_obj.name, "r", encoding="utf-8") as f:
             return f.read()
     else:
         return "Unsupported file type. Please upload a PDF, DOCX, or TXT file."
 
-# 1
 def get_career_recommendations(skills, interests):
     if not skills or not interests:
         return "Please enter both skills and interests."
@@ -51,7 +77,6 @@ def get_career_recommendations(skills, interests):
     except Exception as e:
         return f"Error: {e}"
 
-# 2
 def analyze_resume_file(file_obj):
     if file_obj is None:
         return "Please upload your resume file."
@@ -75,7 +100,6 @@ def analyze_resume_file(file_obj):
     except Exception as e:
         return f"Error: {e}"
 
-# 3
 def chat_with_ai(message, history):
     chat_history = ""
     for m in history:
@@ -97,7 +121,6 @@ def chat_with_ai(message, history):
         history.append({"role": "assistant", "content": f"Error: {e}"})
         return "", history
 
-# 4
 def take_personality_quiz():
     prompt = (
         "Generate a 5-question multiple-choice career personality quiz. "
@@ -109,7 +132,6 @@ def take_personality_quiz():
     except Exception as e:
         return f"Error: {e}"
 
-# 5
 def skill_gap_analysis(user_skills, target_role):
     if not user_skills or not target_role:
         return "Please enter both your skills and a target job."
@@ -127,7 +149,6 @@ def skill_gap_analysis(user_skills, target_role):
     except Exception as e:
         return f"Error: {e}"
 
-# 6
 def career_qa_forum(user_question, qa_history=[]):
     history_text = ""
     for q, a in qa_history:
@@ -142,144 +163,66 @@ def career_qa_forum(user_question, qa_history=[]):
     except Exception as e:
         return f"Error: {e}"
 
-custom_css = """
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
-.gradio-container {
-    background: linear-gradient(135deg, #0a2342 0%, #19376d 100%);
-    font-family: 'Inter', sans-serif;
-    min-height: 100vh;
-    color: #e3eafc;
-    transition: background 0.6s;
-}
-#header {
-    animation: logoPop 1s cubic-bezier(.68,-0.55,.27,1.55);
-}
-@keyframes logoPop {
-    0% { transform: scale(0.7) rotate(-10deg); opacity: 0; }
-    80% { transform: scale(1.05) rotate(2deg); opacity: 1; }
-    100% { transform: scale(1) rotate(0deg); }
-}
-.gr-button-primary {
-    background: linear-gradient(90deg, #2563eb 0%, #19376d 100%);
-    border: none;
-    border-radius: 12px;
-    font-weight: 700;
-    color: #e3eafc;
-    box-shadow: 0 2px 16px rgba(25,55,109,0.18);
-    transition: transform 0.13s, box-shadow 0.13s, background 0.25s;
-    padding: 0.8em 2.2em;
-    font-size: 1.07em;
-    letter-spacing: 0.01em;
-}
-.gr-button-primary:hover, .gr-button-primary:focus {
-    background: linear-gradient(90deg, #19376d 0%, #2563eb 100%);
-    transform: scale(1.05);
-    box-shadow: 0 4px 22px rgba(25,55,109,0.28);
-}
-.gr-panel, .gr-box, .gr-block, .gr-group {
-    border-radius: 16px !important;
-    background: rgba(25, 55, 109, 0.92) !important;
-    border: 1px solid #233a5e !important;
-    box-shadow: 0 4px 24px rgba(10,35,66,0.18);
-    color: #e3eafc;
-    animation: fadeInPanel 0.8s;
-}
-@keyframes fadeInPanel {
-    from { opacity: 0; transform: translateY(24px);}
-    to { opacity: 1; transform: none;}
-}
-.gr-tab {
-    font-weight: 700;
-    color: #e3eafc !important;
-    background: transparent !important;
-    transition: background 0.2s, color 0.2s;
-    border-radius: 10px 10px 0 0 !important;
-    margin-right: 2px;
-    padding: 0.7em 1.4em !important;
-}
-.gr-tab:hover, .gr-tab[aria-selected="true"] {
-    background: linear-gradient(90deg, #2563eb44 0%, #19376d44 100%) !important;
-    color: #fff !important;
-}
-.gr-input, .gr-textbox, textarea, input {
-    border-radius: 8px !important;
-    border: 1.5px solid #233a5e !important;
-    background: #13294b !important;
-    color: #e3eafc !important;
-    padding: 0.7em 1em !important;
-    font-size: 1.04em !important;
-    transition: border 0.2s;
-}
-.gr-input:focus, .gr-textbox:focus, textarea:focus, input:focus {
-    border: 1.5px solid #2563eb !important;
-    box-shadow: 0 0 0 2px #2563eb44;
-}
-.gr-markdown {
-    font-size: 1.06em;
-    line-height: 1.7;
-    color: #e3eafc;
-    animation: fadeInPanel 0.7s;
-    background: transparent !important;
-}
-::-webkit-scrollbar {
-    width: 8px;
-    background: #233a5e;
-}
-::-webkit-scrollbar-thumb {
-    background: #2563eb;
-    border-radius: 8px;
-}
-"""
+# ------------------ Scheduled Calls ------------------
+@periodic_call()
+def scheduled_recommendations():
+    get_career_recommendations("python, ml", "data science, ai")
 
-with gr.Blocks(
-    title="CareerVerse AI (Gemini-powered)",
-    css=custom_css
-) as app:
-    gr.Markdown(
-        """
-        <div style="display: flex; align-items: center; gap: 16px;" id="header">
-            <img src="https://cdn-icons-png.flaticon.com/512/3135/3135715.png" width="44"/>
-            <h1 style="margin: 0; font-weight: 800; font-size: 2.1rem; letter-spacing: -1px; color: #e3eafc;">CareerVerse AI</h1>
-        </div>
-        <p style="font-size: 1.08rem; color: #e3eafc;">
-            <b>Unlock your career potential with Gemini-powered personalized AI guidance!</b>
-        </p>
-        """
-    )
+@periodic_call()
+def scheduled_chat():
+    chat_with_ai("How can I grow in my AI career?", [])
+
+@periodic_call()
+def scheduled_quiz():
+    take_personality_quiz()
+
+@periodic_call()
+def scheduled_gap_analysis():
+    skill_gap_analysis("python, communication", "AI Product Manager")
+
+@periodic_call()
+def scheduled_qa():
+    career_qa_forum("What soft skills matter most in tech careers?", [])
+
+# ------------------ Gradio UI ------------------
+custom_css = """<YOUR_CSS_HERE>"""  # Replace with your original CSS block
+
+with gr.Blocks(title="CareerVerse AI (Gemini-powered)", css=custom_css) as app:
+    gr.Markdown("""<HEADER_HTML_HERE>""")  # Replace with your original HTML header
 
     with gr.Tabs():
-        with gr.Tab("🎯 Career Recommendations"):
+        with gr.Tab("\ud83c\udf1f Career Recommendations"):
             s = gr.Textbox(label="Your Skills (comma-separated)")
             i = gr.Textbox(label="Your Interests (comma-separated)")
             o = gr.Markdown()
-            btn = gr.Button("Get Career Recommendations", elem_classes="gr-button-primary")
+            btn = gr.Button("Get Career Recommendations")
             btn.click(get_career_recommendations, [s, i], o)
 
-        with gr.Tab("📄 Resume Analyzer"):
-            resume_file = gr.File(label="Upload Your Resume (PDF, DOCX, or TXT)", file_types=[".pdf", ".docx", ".txt"])
+        with gr.Tab("\ud83d\udcc4 Resume Analyzer"):
+            resume_file = gr.File(label="Upload Resume", file_types=[".pdf", ".docx", ".txt"])
             resume_output = gr.Markdown()
-            analyze_btn = gr.Button("Analyze Resume", elem_classes="gr-button-primary")
+            analyze_btn = gr.Button("Analyze Resume")
             analyze_btn.click(analyze_resume_file, resume_file, resume_output)
 
-        with gr.Tab("🤖 AI Career Mentor"):
+        with gr.Tab("\ud83e\udd16 AI Career Mentor"):
             c = gr.Chatbot(label="Chat with Mentor", height=320, type="messages")
             ci = gr.Textbox(label="Your Question")
-            cbtn = gr.Button("Send", elem_classes="gr-button-primary")
+            cbtn = gr.Button("Send")
             cbtn.click(chat_with_ai, [ci, c], [ci, c])
             ci.submit(chat_with_ai, [ci, c], [ci, c])
 
-        with gr.Tab("🛠️ Skill Gap Analysis"):
-            user_skills = gr.Textbox(label="Your Current Skills (comma-separated)")
-            target_job = gr.Textbox(label="Target Job Title or Description")
+        with gr.Tab("\ud83d\udee0\ufe0f Skill Gap Analysis"):
+            user_skills = gr.Textbox(label="Your Current Skills")
+            target_job = gr.Textbox(label="Target Job")
             gap_output = gr.Markdown()
-            gap_btn = gr.Button("Analyze Skill Gap", elem_classes="gr-button-primary")
+            gap_btn = gr.Button("Analyze Skill Gap")
             gap_btn.click(skill_gap_analysis, [user_skills, target_job], gap_output)
 
-        with gr.Tab("💬 Career Q&A Forum"):
+        with gr.Tab("\ud83d\udcac Career Q&A Forum"):
             forum_history = gr.State([])
             q_input = gr.Textbox(label="Ask a Career Question")
             q_output = gr.Markdown()
-            ask_btn = gr.Button("Ask", elem_classes="gr-button-primary")
+            ask_btn = gr.Button("Ask")
 
             def handle_forum_question(user_question, qa_history):
                 answer = career_qa_forum(user_question, qa_history)
@@ -290,5 +233,26 @@ with gr.Blocks(
                 return "", qa_history, forum_md
 
             ask_btn.click(handle_forum_question, [q_input, forum_history], [q_input, forum_history, q_output])
-# For Jupyter, just call app.launch(share=True)
-app.launch(share=True)
+
+# Trigger the decorators once
+scheduled_recommendations()
+scheduled_chat()
+scheduled_quiz()
+scheduled_gap_analysis()
+scheduled_qa()
+
+# Trigger the decorators once
+scheduled_recommendations()
+scheduled_chat()
+scheduled_quiz()
+scheduled_gap_analysis()
+scheduled_qa()
+
+# Launch app (Render vs Jupyter auto-detect)
+import sys
+
+if __name__ == "__main__":
+    if "ipykernel" in sys.modules:
+        app.launch(share=True)
+    else:
+        app.launch(server_name="0.0.0.0", server_port=int(os.environ.get("PORT", 7860)))

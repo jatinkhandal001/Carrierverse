@@ -214,7 +214,7 @@ body, .gradio-container {
 
 with gr.Blocks(
     theme=gr.themes.Soft(
-        primary_hue="blue",
+        primary_hue="sky",
         secondary_hue="blue",
         neutral_hue="sky"  # keep neutral light so CSS bg works nicely
     ),

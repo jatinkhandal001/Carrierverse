@@ -3,3 +3,6 @@ numpy
 scikit-learn
 beautifulsoup4
 gradio
+google-generativeai
+python-docx
+PyMuPDF

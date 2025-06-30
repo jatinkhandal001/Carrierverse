@@ -221,7 +221,7 @@ with gr.Blocks(
     css=custom_css,
     title="CareerVerse AI (Gemini-powered)"
 ) as app:
-    gr.Markdown("""<HEADER_HTML_HERE>""")  # Replace with your original HTML header
+    gr.Markdown("<h1 style='text-align: center; margin-top: 20px;'>CareerVerse AI 🚀</h1>")  # Replace with your original HTML header
 
     with gr.Tabs():
         with gr.Tab("🌟 Career Recommendations"):

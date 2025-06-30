@@ -241,12 +241,5 @@ scheduled_quiz()
 scheduled_gap_analysis()
 scheduled_qa()
 
-# Trigger the decorators once
-scheduled_recommendations()
-scheduled_chat()
-scheduled_quiz()
-scheduled_gap_analysis()
-scheduled_qa()
 
-# Launch app (Render vs Jupyter auto-detect)
-app.launch(server_name="0.0.0.0", server_port=int(os.environ.get("PORT", 7860)))
+app.launch(share=True)

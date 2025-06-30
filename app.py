@@ -249,10 +249,4 @@ scheduled_gap_analysis()
 scheduled_qa()
 
 # Launch app (Render vs Jupyter auto-detect)
-import sys
-
-if __name__ == "__main__":
-    if "ipykernel" in sys.modules:
-        app.launch(share=True)
-    else:
-        app.launch(server_name="0.0.0.0", server_port=int(os.environ.get("PORT", 7860)))
+app.launch(server_name="0.0.0.0", server_port=int(os.environ.get("PORT", 7860)))

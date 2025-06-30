@@ -184,41 +184,74 @@ def scheduled_gap_analysis():
 def scheduled_qa():
     career_qa_forum("What soft skills matter most in tech careers?", [])
 
-# ------------------ Gradio UI ------------------
-custom_css = """<YOUR_CSS_HERE>"""  # Replace with your original CSS block
+custom_css = """
+body, .gradio-container {
+    background-color: #87ceeb !important;  /* skyblue background */
+    color: #000000 !important;             /* black text for full visibility */
+}
 
-with gr.Blocks(title="CareerVerse AI (Gemini-powered)", css=custom_css) as app:
+.gradio-markdown {
+    color: #000000 !important;             /* markdown text black */
+}
+
+.gr-button {
+    background-color: #1e90ff !important; /* dodger blue buttons */
+    color: white !important;
+    border: none !important;
+}
+
+.gr-input, .gr-textbox textarea {
+    background-color: #e0f0ff !important;  /* very light blue inputs */
+    color: #000000 !important;
+    border: 1px solid #1e90ff !important;
+}
+
+.gr-chatbot-message {
+    color: #000000 !important;
+}
+
+"""
+
+with gr.Blocks(
+    theme=gr.themes.Soft(
+        primary_hue="blue",
+        secondary_hue="blue",
+        neutral_hue="sky"  # keep neutral light so CSS bg works nicely
+    ),
+    css=custom_css,
+    title="CareerVerse AI (Gemini-powered)"
+) as app:
     gr.Markdown("""<HEADER_HTML_HERE>""")  # Replace with your original HTML header
 
     with gr.Tabs():
-        with gr.Tab("\ud83c\udf1f Career Recommendations"):
+        with gr.Tab("🌟 Career Recommendations"):
             s = gr.Textbox(label="Your Skills (comma-separated)")
             i = gr.Textbox(label="Your Interests (comma-separated)")
             o = gr.Markdown()
             btn = gr.Button("Get Career Recommendations")
             btn.click(get_career_recommendations, [s, i], o)
 
-        with gr.Tab("\ud83d\udcc4 Resume Analyzer"):
+        with gr.Tab("📄 Resume Analyzer"):
             resume_file = gr.File(label="Upload Resume", file_types=[".pdf", ".docx", ".txt"])
             resume_output = gr.Markdown()
             analyze_btn = gr.Button("Analyze Resume")
             analyze_btn.click(analyze_resume_file, resume_file, resume_output)
 
-        with gr.Tab("\ud83e\udd16 AI Career Mentor"):
+        with gr.Tab("🤖 AI Career Mentor"):
             c = gr.Chatbot(label="Chat with Mentor", height=320, type="messages")
             ci = gr.Textbox(label="Your Question")
             cbtn = gr.Button("Send")
             cbtn.click(chat_with_ai, [ci, c], [ci, c])
             ci.submit(chat_with_ai, [ci, c], [ci, c])
 
-        with gr.Tab("\ud83d\udee0\ufe0f Skill Gap Analysis"):
+        with gr.Tab("🛠️ Skill Gap Analysis"):
             user_skills = gr.Textbox(label="Your Current Skills")
             target_job = gr.Textbox(label="Target Job")
             gap_output = gr.Markdown()
             gap_btn = gr.Button("Analyze Skill Gap")
             gap_btn.click(skill_gap_analysis, [user_skills, target_job], gap_output)
 
-        with gr.Tab("\ud83d\udcac Career Q&A Forum"):
+        with gr.Tab("💬 Career Q&A Forum"):
             forum_history = gr.State([])
             q_input = gr.Textbox(label="Ask a Career Question")
             q_output = gr.Markdown()
@@ -233,6 +266,7 @@ with gr.Blocks(title="CareerVerse AI (Gemini-powered)", css=custom_css) as app:
                 return "", qa_history, forum_md
 
             ask_btn.click(handle_forum_question, [q_input, forum_history], [q_input, forum_history, q_output])
+
 
 # Trigger the decorators once
 scheduled_recommendations()

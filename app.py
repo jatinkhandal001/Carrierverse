@@ -4,7 +4,11 @@ import google.generativeai as genai
 import os
 import threading
 import time
-import functools
+from functools import wraps
+import io
+import traceback
+import logging
+logging.basicConfig(level=logging.ERROR)
 
 # Only needed for local development with .env
 if os.environ.get("RENDER") != "true":
@@ -19,44 +23,63 @@ if not GEMINI_API_KEY:
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel("gemini-1.5-flash")
 
-# ------------------ Periodic Call Decorator ------------------
-def periodic_call(interval_sec=720):
+def log_exceptions(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            logging.error(f"Exception in {func.__name__}: {e}", exc_info=True)
+            return f"An error occurred in {func.__name__}: {e}"
+    return wrapper
+
+def validate_nonempty(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        for arg in args:
+            if isinstance(arg, str) and not arg.strip():
+                return "Input cannot be empty."
+        return func(*args, **kwargs)
+    return wrapper
+
+
+def retry(times=3, delay=2):
     def decorator(func):
-        @functools.wraps(func)
-        def wrapper():
-            if not hasattr(wrapper, "_thread_started"):
-                def loop():
-                    while True:
-                        try:
-                            print(f"⏰ Running scheduled function: {func.__name__}")
-                            func()
-                        except Exception as e:
-                            print(f"❌ Error in scheduled function {func.__name__}: {e}")
-                        time.sleep(interval_sec)
-                threading.Thread(target=loop, daemon=True).start()
-                wrapper._thread_started = True
-            func()  # Run once immediately
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            for attempt in range(1, times + 1):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    logging.error(f"Attempt {attempt} failed in {func.__name__}: {e}")
+                    if attempt == times:
+                        return f"Failed after {times} attempts: {e}"
+                    time.sleep(delay)
         return wrapper
     return decorator
 
+
 # ------------------ Core Functions ------------------
+@log_exceptions
+@validate_nonempty
 def extract_text_from_file(file_obj):
-    import os
     ext = os.path.splitext(file_obj.name)[-1].lower()
+    file_obj.seek(0)
     if ext == ".pdf":
         import fitz
-        with fitz.open(file_obj.name) as doc:
+        with fitz.open(stream=file_obj.read(), filetype="pdf") as doc:
             return "\n".join(page.get_text() for page in doc)
     elif ext == ".docx":
         import docx
-        doc = docx.Document(file_obj.name)
+        doc = docx.Document(io.BytesIO(file_obj.read()))
         return "\n".join([para.text for para in doc.paragraphs])
     elif ext == ".txt":
-        with open(file_obj.name, "r", encoding="utf-8") as f:
-            return f.read()
+        return file_obj.read().decode("utf-8")
     else:
         return "Unsupported file type. Please upload a PDF, DOCX, or TXT file."
 
+@log_exceptions
+@validate_nonempty
 def get_career_recommendations(skills, interests):
     if not skills or not interests:
         return "Please enter both skills and interests."
@@ -77,6 +100,8 @@ def get_career_recommendations(skills, interests):
     except Exception as e:
         return f"Error: {e}"
 
+@log_exceptions
+@validate_nonempty
 def analyze_resume_file(file_obj):
     if file_obj is None:
         return "Please upload your resume file."
@@ -100,6 +125,8 @@ def analyze_resume_file(file_obj):
     except Exception as e:
         return f"Error: {e}"
 
+@log_exceptions
+@validate_nonempty
 def chat_with_ai(message, history):
     chat_history = ""
     for m in history:
@@ -121,6 +148,8 @@ def chat_with_ai(message, history):
         history.append({"role": "assistant", "content": f"Error: {e}"})
         return "", history
 
+@log_exceptions
+@validate_nonempty
 def take_personality_quiz():
     prompt = (
         "Generate a 5-question multiple-choice career personality quiz. "
@@ -132,6 +161,8 @@ def take_personality_quiz():
     except Exception as e:
         return f"Error: {e}"
 
+@log_exceptions
+@validate_nonempty
 def skill_gap_analysis(user_skills, target_role):
     if not user_skills or not target_role:
         return "Please enter both your skills and a target job."
@@ -149,6 +180,8 @@ def skill_gap_analysis(user_skills, target_role):
     except Exception as e:
         return f"Error: {e}"
 
+@log_exceptions
+@validate_nonempty
 def career_qa_forum(user_question, qa_history=[]):
     history_text = ""
     for q, a in qa_history:
@@ -164,23 +197,43 @@ def career_qa_forum(user_question, qa_history=[]):
         return f"Error: {e}"
 
 # ------------------ Scheduled Calls ------------------
-@periodic_call()
+@log_exceptions
+@validate_nonempty
+def schedule(func, interval_sec=3600):
+    def loop():
+        while True:
+            try:
+                print(f"[Scheduled] Running: {func.__name__}")
+                func()
+            except Exception as e:
+                print(f"[Scheduled ERROR] in {func.__name__}: {e}")
+                traceback.print_exc()
+            time.sleep(interval_sec)
+    threading.Thread(target=loop, daemon=True).start()
+
+@log_exceptions
+@validate_nonempty
 def scheduled_recommendations():
     get_career_recommendations("python, ml", "data science, ai")
 
-@periodic_call()
+
+@log_exceptions
+@validate_nonempty
 def scheduled_chat():
     chat_with_ai("How can I grow in my AI career?", [])
 
-@periodic_call()
+@log_exceptions
+@validate_nonempty
 def scheduled_quiz():
     take_personality_quiz()
 
-@periodic_call()
+@log_exceptions
+@validate_nonempty
 def scheduled_gap_analysis():
     skill_gap_analysis("python, communication", "AI Product Manager")
 
-@periodic_call()
+@log_exceptions
+@validate_nonempty
 def scheduled_qa():
     career_qa_forum("What soft skills matter most in tech careers?", [])
 
@@ -269,10 +322,11 @@ with gr.Blocks(
 
 
 # Trigger the decorators once
-scheduled_recommendations()
-scheduled_chat()
-scheduled_quiz()
-scheduled_gap_analysis()
-scheduled_qa()
+# Run each function every hour
+schedule(scheduled_recommendations, 600)
+schedule(scheduled_chat, 600)
+schedule(scheduled_quiz, 600)
+schedule(scheduled_gap_analysis, 600)
+schedule(scheduled_qa, 600)
 
 app.launch(server_name="0.0.0.0", server_port=int(os.environ.get("PORT", 7860)))

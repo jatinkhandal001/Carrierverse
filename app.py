@@ -2,6 +2,7 @@
 import gradio as gr
 import google.generativeai as genai
 import os
+import requests  # Required for keep_awake
 import threading
 import time
 from functools import wraps
@@ -319,14 +320,28 @@ with gr.Blocks(
                 return "", qa_history, forum_md
 
             ask_btn.click(handle_forum_question, [q_input, forum_history], [q_input, forum_history, q_output])
+            
+# ------------------ KEEP AWAKE FUNCTION ------------------
+def keep_awake():
+    def ping_loop():
+        while True:
+            try:
+                print("[PING] Keeping CareerVerse awake...")
+                requests.get("https://careerverse.onrender.com", timeout=10)
+            except Exception as e:
+                print(f"[PING ERROR]: {e}")
+            time.sleep(600)  # every 10 minutes
+    threading.Thread(target=ping_loop, daemon=True).start()
 
+# Start background ping to keep app alive
+keep_awake()
 
-# Trigger the decorators once
-# Run each function every hour
+# ------------------ SCHEDULED TASKS START ------------------
 schedule(scheduled_recommendations, 600)
 schedule(scheduled_chat, 600)
 schedule(scheduled_quiz, 600)
 schedule(scheduled_gap_analysis, 600)
 schedule(scheduled_qa, 600)
 
+# ------------------ LAUNCH GRADIO APP ------------------
 app.launch(server_name="0.0.0.0", server_port=int(os.environ.get("PORT", 7860)))
